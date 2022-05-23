@@ -281,6 +281,22 @@ object PrivilegesBuilder {
           inputObjs += databasePrivileges(db.get)
         }
 
+      case "AppendData" =>
+        val dataSourceV2Relation = getPlanField[Any]("table")
+        val identifier = getFieldVal[Option[AnyRef]](dataSourceV2Relation, "identifier").orNull
+        if (identifier != null) {
+          val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+          val table = invoke(identifier, "name").asInstanceOf[String]
+          outputObjs += PrivilegeObject(
+            TABLE_OR_VIEW,
+            PrivilegeObjectActionType.INSERT,
+            quote(namespace),
+            table,
+            Nil)
+          val query = getPlanField[LogicalPlan]("query")
+          buildQuery(query, inputObjs)
+        }
+
       case "CacheTable" =>
         // >= 3.2
         outputObjs += tablePrivileges(getMultipartIdentifier)

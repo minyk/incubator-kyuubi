@@ -73,7 +73,7 @@ object OperationType extends Enumeration {
           "UnsetViewProperties" => ALTERTABLE_PROPERTIES
       case ava if ava.contains("AlterViewAs") => ALTERVIEW_AS
       case ac if ac.startsWith("Analyze") => ANALYZE_TABLE
-      case "AppendData" => ALTERTABLE_ADDPARTS
+      case "AppendData" => QUERY
       case "CreateDatabaseCommand" | "CreateNamespace" => CREATEDATABASE
       case "CreateFunctionCommand" | "CreateFunction" => CREATEFUNCTION
       case "CreateTableAsSelect" |
