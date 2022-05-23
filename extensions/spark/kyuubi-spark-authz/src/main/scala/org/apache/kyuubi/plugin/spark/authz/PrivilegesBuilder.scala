@@ -20,10 +20,11 @@ package org.apache.kyuubi.plugin.spark.authz
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.sql.catalyst.{FunctionIdentifier, TableIdentifier}
+import org.apache.spark.sql.catalyst.analysis.{FieldName, PartitionSpec}
 import org.apache.spark.sql.catalyst.catalog.CatalogTable
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
 import org.apache.spark.sql.catalyst.expressions.{Expression, NamedExpression}
-import org.apache.spark.sql.catalyst.plans.logical.{Command, Filter, Join, LogicalPlan, Project, Sort, Window}
+import org.apache.spark.sql.catalyst.plans.logical.{Command, Filter, Join, LogicalPlan, Project, QualifiedColType, Sort, Window}
 import org.apache.spark.sql.execution.datasources.LogicalRelation
 import org.apache.spark.sql.types.StructField
 
@@ -183,6 +184,19 @@ object PrivilegesBuilder {
         val table = getPlanField[TableIdentifier]("table")
         val cols = getPlanField[Seq[StructField]]("colsToAdd").map(_.name)
         outputObjs += tablePrivileges(table, cols)
+
+      case "AddColumns" | "ReplaceColumns" =>
+        val resolvedTable = getPlanField[Any]("table")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        val columnsToAdd = getPlanField[Seq[QualifiedColType]]("columnsToAdd").map(_.colName)
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          columnsToAdd)
 
       case "AlterTableAddPartitionCommand" =>
         val table = getTableName
@@ -356,6 +370,17 @@ object PrivilegesBuilder {
       case "CreateTempViewUsing" =>
         outputObjs += tablePrivileges(getTableIdent)
 
+      case "CreateV2Table" | "ReplaceTable" =>
+        val identifier = getPlanField[AnyRef]("tableName")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          Nil)
+
       case "DescribeColumnCommand" =>
         val table = getPlanField[TableIdentifier]("table")
         val cols = getPlanField[Seq[String]]("colNameParts").takeRight(1)
@@ -374,14 +399,57 @@ object PrivilegesBuilder {
         val database = getFieldVal[Seq[String]](child, "namespace")
         inputObjs += databasePrivileges(quote(database))
 
+      // TODO how can we check this?
+      case "DescribeFunction" =>
+
       case "DescribeFunctionCommand" =>
         val func = getPlanField[FunctionIdentifier]("functionName")
         inputObjs += functionPrivileges(func.database.orNull, func.funcName)
+
+      case "DropColumns" =>
+        val resolvedTable = getPlanField[Any]("table")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        val columns = getPlanField[Seq[FieldName]]("columnsToDrop").filter(_.resolved).map(
+          invoke(_, "name").asInstanceOf[Array[String]])
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          columns.map(quote(_)))
 
       case "DropNamespace" =>
         val child = getPlanField[Any]("namespace")
         val database = getFieldVal[Seq[String]](child, "namespace")
         outputObjs += databasePrivileges(quote(database))
+
+      case "DropPartitions" =>
+        val resolvedTable = getPlanField[Any]("table")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        val parts = getPlanField[Seq[PartitionSpec]]("parts").filter(_.resolved).map(
+          invoke(_, "names").asInstanceOf[Array[String]])
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          parts.map(quote(_)))
+
+      case "DropTable" | "DropView" =>
+        val resolvedTable = getPlanField[Any]("child")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          Nil)
 
       case "DropTableCommand" =>
         outputObjs += tablePrivileges(getTableName)
@@ -422,6 +490,122 @@ object PrivilegesBuilder {
         outputObjs += tablePrivileges(table, cols.toSeq, actionType = actionType)
 
       case "MergeIntoTable" =>
+        val resolvedTargetTable = getPlanField[Any]("targetTable")
+        val targetIdentifier = getFieldVal[AnyRef](resolvedTargetTable, "identifier")
+        val targetNamespace = invoke(targetIdentifier, "namespace").asInstanceOf[Array[String]]
+        val targetTable = invoke(targetIdentifier, "name").asInstanceOf[String]
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(targetNamespace),
+          targetTable,
+          Nil)
+        val resolvedSourceTable = getPlanField[Any]("sourceTable")
+        val sourceIdentifier = getFieldVal[AnyRef](resolvedSourceTable, "identifier")
+        val sourceNamespace = invoke(sourceIdentifier, "namespace").asInstanceOf[Array[String]]
+        val sourceTable = invoke(sourceIdentifier, "name").asInstanceOf[String]
+        inputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(sourceNamespace),
+          sourceTable,
+          Nil)
+
+      // RECOVER PARTITIONS is not supported for v2 tables.
+      case "RecoverPartitions" =>
+
+      case "RenameColumn" =>
+        val resolvedTable = getPlanField[Any]("child")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        val column = getPlanField[AnyRef]("column")
+        val newName = getPlanField[String]("newName")
+        inputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          quote(invoke(column, "name").asInstanceOf[Array[String]])::Nil)
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          newName::Nil)
+
+      case "RenameTable" =>
+        val resolvedTable = getPlanField[Any]("child")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        val newName = getPlanField[Seq[String]]("newName")
+        inputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          Nil)
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(newName.slice(0, newName.size - 1)),
+          newName.last,
+          Nil)
+
+      case "RenamePartitions" =>
+        val resolvedTable = getPlanField[Any]("child")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        val fromPart = getPlanField[PartitionSpec]("from")
+        val toPart = getPlanField[PartitionSpec]("to")
+        if (fromPart.resolved) {
+          outputObjs += PrivilegeObject(
+            TABLE_OR_VIEW,
+            PrivilegeObjectActionType.DELETE,
+            quote(namespace),
+            table,
+            quote(invoke(fromPart, "names").asInstanceOf[Array[String]])::Nil
+          )
+        }
+        if (toPart.resolved) {
+          outputObjs += PrivilegeObject(
+            TABLE_OR_VIEW,
+            PrivilegeObjectActionType.INSERT,
+            quote(namespace),
+            table,
+            quote(invoke(fromPart, "names").asInstanceOf[Array[String]])::Nil
+          )
+        }
+
+      case "RepairTable" =>
+        val resolvedTable = getPlanField[Any]("child")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        if (getPlanField[Boolean]("enableAddPartitions")) {
+          outputObjs += PrivilegeObject(
+            TABLE_OR_VIEW,
+            PrivilegeObjectActionType.INSERT,
+            quote(namespace),
+            table,
+            Nil)
+        } else if (getPlanField[Boolean]("enableDropPartitions")) {
+          outputObjs += PrivilegeObject(
+            TABLE_OR_VIEW,
+            PrivilegeObjectActionType.DELETE,
+            quote(namespace),
+            table,
+            Nil)
+        } else {
+          inputObjs += PrivilegeObject(
+            TABLE_OR_VIEW,
+            PrivilegeObjectActionType.OTHER,
+            quote(namespace),
+            table,
+            Nil)
+        }
 
       case "RepairTableCommand" =>
         val enableAddPartitions = getPlanField[Boolean]("enableAddPartitions")
@@ -458,11 +642,98 @@ object PrivilegesBuilder {
         val namespace = quote(getPlanField[Seq[String]]("namespace"))
         inputObjs += databasePrivileges(namespace)
 
+      case "SetTableLocation" =>
+        val resolvedTable = getPlanField[Any]("table")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        val cols = getPlanField[Option[TablePartitionSpec]]("partitionSpec")
+          .toSeq.flatMap(_.keySet)
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          cols)
+
+      case "SetTableProperties" | "UnsetTableProperties" =>
+        val resolvedTable = getPlanField[Any]("table")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          Nil)
+
+      case  "SetViewProperties" | "UnsetViewProperties" =>
+        val resolvedTable = getPlanField[Any]("child")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          Nil)
+
+      case "SetTableSerDeProperties" =>
+        val resolvedTable = getPlanField[Any]("child")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          Nil)
+
+      case "TruncatePartition" =>
+        val resolvedTable = getPlanField[Any]("table")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        val part = getPlanField[PartitionSpec]("partitionSpec")
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          quote(invoke(part, "names").asInstanceOf[Array[String]])::Nil)
+
+      case "TruncateTable" =>
+        val resolvedTable = getPlanField[Any]("child")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        outputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          Nil)
+
       case "TruncateTableCommand" =>
         val table = getTableName
         val cols = getPlanField[Option[TablePartitionSpec]]("partitionSpec")
           .map(_.keySet).getOrElse(Nil)
         outputObjs += tablePrivileges(table, cols.toSeq)
+
+      case "ShowColumns" =>
+        val resolvedTable = getPlanField[Any]("child")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        inputObjs += PrivilegeObject(
+          TABLE_OR_VIEW,
+          PrivilegeObjectActionType.OTHER,
+          quote(namespace),
+          table,
+          Nil)
 
       case "ShowColumnsCommand" =>
         inputObjs += tablePrivileges(getTableName)
@@ -497,7 +768,32 @@ object PrivilegesBuilder {
           table,
           Nil)
 
+      case "ShowFunctions" =>
+
       case "ShowFunctionsCommand" =>
+
+      case "ShowPartitions" =>
+        val resolvedTable = getPlanField[Any]("table")
+        val identifier = getFieldVal[AnyRef](resolvedTable, "identifier")
+        val namespace = invoke(identifier, "namespace").asInstanceOf[Array[String]]
+        val table = invoke(identifier, "name").asInstanceOf[String]
+        val part = getPlanField[Option[PartitionSpec]]("pattern").orNull
+        if (part != null) {
+          inputObjs += PrivilegeObject(
+            TABLE_OR_VIEW,
+            PrivilegeObjectActionType.OTHER,
+            quote(namespace),
+            table,
+            quote(invoke(part, "names").asInstanceOf[Array[String]])::Nil)
+        } else {
+          inputObjs += PrivilegeObject(
+            TABLE_OR_VIEW,
+            PrivilegeObjectActionType.OTHER,
+            quote(namespace),
+            table,
+            Nil)
+        }
+
 
       case "ShowPartitionsCommand" =>
         val cols = getPlanField[Option[TablePartitionSpec]]("spec")
@@ -523,6 +819,10 @@ object PrivilegesBuilder {
       // ResetCommand
       // SetCommand
       // ShowDatabasesCommand
+      // ShowNamespaces
+      // ShowTables
+      // ShowTableExtended
+      // ShowViews
       // StreamingExplainCommand
       // UncacheTableCommand
     }

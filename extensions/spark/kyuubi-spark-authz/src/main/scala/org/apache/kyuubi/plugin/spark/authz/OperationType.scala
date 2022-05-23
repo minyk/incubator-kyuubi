@@ -47,18 +47,30 @@ object OperationType extends Enumeration {
       case "AlterDatabaseSetLocationCommand" |
           "SetNamespaceLocation" => ALTERDATABASE_LOCATION
       case "AlterTableAddColumnsCommand" |
-          "AlterHoodieTableAddColumnsCommand" => ALTERTABLE_ADDCOLS
+          "AlterHoodieTableAddColumnsCommand" |
+          "AddColumns" |
+          "DropColumns" => ALTERTABLE_ADDCOLS
       case "AlterTableAddPartitionCommand" => ALTERTABLE_ADDPARTS
-      case "AlterTableChangeColumnCommand" => ALTERTABLE_REPLACECOLS
-      case "AlterTableDropPartitionCommand" => ALTERTABLE_DROPPARTS
-      case "AlterTableRenameCommand" => ALTERTABLE_RENAME
+      case "AlterTableChangeColumnCommand" |
+          "ReplaceColumns" => ALTERTABLE_REPLACECOLS
+      case "AlterTableDropPartitionCommand" | "DropPartitions" => ALTERTABLE_DROPPARTS
+      case "AlterTableRenameCommand" |
+          "RenameTable" => ALTERTABLE_RENAME
       case "AlterTableRecoverPartitionsCommand" |
-          "RepairTableCommand" => MSCK
-      case "AlterTableRenamePartitionCommand" => ALTERTABLE_RENAMEPART
-      case "AlterTableSerDePropertiesCommand" => ALTERTABLE_SERDEPROPERTIES
-      case "AlterTableSetLocationCommand" => ALTERTABLE_LOCATION
+          "RecoverPartitions" |
+          "RepairTableCommand" |
+          "RepairTable" => MSCK
+      case "AlterTableRenamePartitionCommand" | "RenamePartitions" => ALTERTABLE_RENAMEPART
+      case "AlterTableSerDePropertiesCommand" |
+          "SetTableSerDeProperties" => ALTERTABLE_SERDEPROPERTIES
+      case "AlterTableSetLocationCommand" |
+          "SetTableLocation" => ALTERTABLE_LOCATION
       case "AlterTableSetPropertiesCommand" |
-          "AlterTableUnsetPropertiesCommand" => ALTERTABLE_PROPERTIES
+          "AlterTableUnsetPropertiesCommand" |
+          "SetTableProperties" |
+          "UnsetTableProperties" |
+          "SetViewProperties" |
+          "UnsetViewProperties" => ALTERTABLE_PROPERTIES
       case ava if ava.contains("AlterViewAs") => ALTERVIEW_AS
       case ac if ac.startsWith("Analyze") => ANALYZE_TABLE
       case "AppendData" => ALTERTABLE_ADDPARTS
@@ -67,21 +79,26 @@ object OperationType extends Enumeration {
       case "CreateTableAsSelect" |
           "CreateDataSourceTableAsSelectCommand" |
           "CreateHiveTableAsSelectCommand" |
-          "OptimizedCreateHiveTableAsSelectCommand" => CREATETABLE_AS_SELECT
+          "OptimizedCreateHiveTableAsSelectCommand" |
+          "ReplaceTableAsSelect" => CREATETABLE_AS_SELECT
       case "CreateTableCommand" |
           "CreateDataSourceTableCommand" |
-          "CreateTableLikeCommand" => CREATETABLE
+          "CreateTableLikeCommand" |
+          "CreateV2Table" |
+          "ReplaceTable" => CREATETABLE
       case "CreateViewCommand" |
           "CacheTableCommand" |
           "CreateTempViewUsing" |
           "CacheTable" |
           "CacheTableAsSelect" => CREATEVIEW
       case "DescribeDatabaseCommand" | "DescribeNamespace" => DESCDATABASE
-      case "DescribeFunctionCommand" => DESCFUNCTION
+      case "DescribeFunctionCommand" | "DescribeFunction" => DESCFUNCTION
       case "DescribeColumnCommand" | "DescribeTableCommand" => DESCTABLE
       case "DropDatabaseCommand" | "DropNamespace" => DROPDATABASE
       case "DropFunctionCommand" | "DropFunction" => DROPFUNCTION
-      case "DropTableCommand" => DROPTABLE
+      case "DropTableCommand" |
+          "DropTable" => DROPTABLE
+      case "DropView" => DROPVIEW
       case "ExplainCommand" => EXPLAIN
       case "InsertIntoDataSourceCommand" |
           "InsertIntoDataSourceDirCommand" |
@@ -92,6 +109,7 @@ object OperationType extends Enumeration {
       case "SetCommand" => SHOWCONF
       case "RefreshFunctionCommand" | "RefreshFunction" => RELOADFUNCTION
       case "RefreshTableCommand" | "RefreshTable" => QUERY
+      case "RenameColumn" => ALTERTABLE_RENAMECOL
       case "SetCatalogCommand" |
           "SetCatalogAndNamespace" |
           "SetNamespaceCommand" |
@@ -100,16 +118,20 @@ object OperationType extends Enumeration {
           "ShowCurrentNamespaceCommand" => SHOWDATABASES
       case "ShowTablesCommand" |
           "ShowViewsCommand" |
-          "ShowTables" => SHOWTABLES
-      case "ShowColumnsCommand" => SHOWCOLUMNS
+          "ShowTables" |
+          "ShowTableExtended" |
+          "ShowViews" => SHOWTABLES
+      case "ShowColumnsCommand" | "ShowColumns" => SHOWCOLUMNS
       case "ShowCreateTableAsSerdeCommand" |
           "ShowCreateTableCommand" |
           "ShowCreateTable" => SHOW_CREATETABLE
-      case "ShowFunctionsCommand" => SHOWFUNCTIONS
-      case "ShowPartitionsCommand" => SHOWPARTITIONS
+      case "ShowFunctionsCommand" | "ShowFunctions" => SHOWFUNCTIONS
+      case "ShowPartitionsCommand" | "ShowPartitions" => SHOWPARTITIONS
       case "ShowTablePropertiesCommand" |
           "ShowTableProperties" => SHOW_TBLPROPERTIES
-      case "TruncateTableCommand" => TRUNCATETABLE
+      case "TruncateTableCommand" |
+          "TruncateTable" |
+          "TruncatePartition" => TRUNCATETABLE
       case "UncacheTableCommand" => DROPVIEW
       case _ => QUERY
     }
