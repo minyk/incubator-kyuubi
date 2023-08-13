@@ -115,12 +115,16 @@ abstract class SparkOperation(session: Session)
 
   protected def eventEnabled: Boolean = true
 
-  if (eventEnabled) EventBus.post(SparkOperationEvent(this))
+  if (eventEnabled) EventBus.post(SparkOperationEvent(this, None, currentDB(), invoker()))
 
   override protected def setState(newState: OperationState): Unit = {
     super.setState(newState)
     if (eventEnabled) {
-      EventBus.post(SparkOperationEvent(this, operationListener.flatMap(_.getExecutionId)))
+      EventBus.post(SparkOperationEvent(
+        this,
+        operationListener.flatMap(_.getExecutionId),
+        currentDB(),
+        invoker()))
     }
   }
 
@@ -292,6 +296,10 @@ abstract class SparkOperation(session: Session)
     setSparkLocalProperty(KYUUBI_SESSION_SIGN_PUBLICKEY, null)
     setSparkLocalProperty(KYUUBI_SESSION_USER_SIGN, null)
   }
+
+  private def currentDB(): String = spark.catalog.currentDatabase
+
+  private def invoker(): String = spark.conf.get("spark.ndap.query.invoker", "Other")
 }
 
 object SparkOperation {
