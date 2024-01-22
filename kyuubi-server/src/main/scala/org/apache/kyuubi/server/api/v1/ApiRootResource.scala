@@ -30,7 +30,7 @@ import org.glassfish.jersey.servlet.ServletContainer
 import org.apache.kyuubi.KYUUBI_VERSION
 import org.apache.kyuubi.client.api.v1.dto._
 import org.apache.kyuubi.server.KyuubiRestFrontendService
-import org.apache.kyuubi.server.api.{ApiRequestContext, EngineUIProxyServlet, FrontendServiceContext, OpenAPIConfig}
+import org.apache.kyuubi.server.api.{ApiRequestContext, EngineUIProxyServlet, FrontendServiceContext, NdapUserUIProxyServlet, OpenAPIConfig}
 
 @Path("/v1")
 private[v1] class ApiRootResource extends ApiRequestContext {
@@ -88,6 +88,15 @@ private[server] object ApiRootResource {
     val holder = new ServletHolder(proxyServlet)
     val proxyHandler = new ServletContextHandler(ServletContextHandler.NO_SESSIONS)
     proxyHandler.setContextPath("/engine-ui")
+    proxyHandler.addServlet(holder, "/*")
+    proxyHandler
+  }
+
+  def getNdapUserUIProxyHandler(fe: KyuubiRestFrontendService): ServletContextHandler = {
+    val proxyServlet = new NdapUserUIProxyServlet(fe.getConf.clone)
+    val holder = new ServletHolder(proxyServlet)
+    val proxyHandler = new ServletContextHandler(ServletContextHandler.NO_SESSIONS)
+    proxyHandler.setContextPath("/user-ui")
     proxyHandler.addServlet(holder, "/*")
     proxyHandler
   }

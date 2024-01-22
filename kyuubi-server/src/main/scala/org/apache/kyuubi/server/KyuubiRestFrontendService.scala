@@ -109,6 +109,9 @@ class KyuubiRestFrontendService(override val serverable: Serverable)
     val proxyHandler = ApiRootResource.getEngineUIProxyHandler(this)
     server.addHandler(authenticationFactory.httpHandlerWrapperFactory.wrapHandler(proxyHandler))
 
+    val userProxyHandler = ApiRootResource.getNdapUserUIProxyHandler(this)
+    server.addHandler(authenticationFactory.httpHandlerWrapperFactory.wrapHandler(userProxyHandler))
+
     installWebUI()
   }
 
