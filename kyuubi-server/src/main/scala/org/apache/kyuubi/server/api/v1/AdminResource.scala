@@ -17,6 +17,8 @@
 
 package org.apache.kyuubi.server.api.v1
 
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.util.Collections
 import javax.ws.rs._
 import javax.ws.rs.core.{MediaType, Response}
@@ -321,6 +323,74 @@ private[v1] class AdminResource extends ApiRequestContext with Logging {
       .toSeq
   }
 
+  private def makeEngineInfo(
+      user: String,
+      version: String,
+      engineType: String,
+      shareLevel: String,
+      node: ServiceNodeInfo): Engine = {
+    new Engine(
+      version,
+      URLDecoder.decode(user, StandardCharsets.UTF_8),
+      engineType,
+      shareLevel,
+      node.namespace.split("/").last,
+      node.instance,
+      node.namespace,
+      node.attributes.asJava)
+  }
+
+  @ApiResponse(
+    responseCode = "200",
+    content = Array(new Content(mediaType = MediaType.APPLICATION_JSON)),
+    description = "list kyuubi engines")
+  @GET
+  @Path("engines")
+  def listEngines(
+      @QueryParam("type") engineType: String,
+      @QueryParam("sharelevel") shareLevel: String,
+      @QueryParam("subdomain") subdomain: String): Seq[Engine] = {
+    val engine = normalizeEngineInfo(null, engineType, shareLevel, subdomain, "")
+    info(s"Normalized Engine $engine")
+    val engineSpace = generateEngineSpace(engine)
+    info(s"Search under the EngineSpace : $engineSpace")
+
+    val engineNodes = ListBuffer[Engine]()
+
+    withDiscoveryClient(fe.getConf) { discoveryClient =>
+      Option(subdomain).filter(_.nonEmpty) match {
+        case Some(_) =>
+          info(s"Listing engine nodes under $engineSpace")
+          discoveryClient.getChildren(engineSpace).map { child =>
+            val path = DiscoveryPaths.makePath(engineSpace, child, engine.getSubdomain)
+            engineNodes ++= discoveryClient.getServiceNodesInfo(path).map(node =>
+              makeEngineInfo(
+                child,
+                engine.getVersion,
+                engine.getEngineType,
+                engine.getSharelevel,
+                node))
+          }
+        case None if discoveryClient.pathNonExists(engineSpace) =>
+          warn(s"Path $engineSpace does not exist. engine type: $engineType, " +
+            s"share level: $shareLevel, subdomain: $subdomain")
+        case None =>
+          discoveryClient.getChildren(engineSpace).map { child =>
+            info(s"Listing engine nodes under $engineSpace/$child")
+            engineNodes ++= discoveryClient.getServiceNodesInfo(s"$engineSpace/$child").map(node =>
+              makeEngineInfo(
+                child,
+                engine.getVersion,
+                engine.getEngineType,
+                engine.getSharelevel,
+                node))
+          }
+      }
+    }
+
+    engineNodes.toSeq
+  }
+
   @ApiResponse(
     responseCode = "200",
     content = Array(
@@ -379,6 +449,10 @@ private[v1] class AdminResource extends ApiRequestContext with Logging {
       Collections.emptyMap())
   }
 
+  private def generateEngineSpace(engine: Engine): String = {
+    s"${engine.getNamespace}_${engine.getVersion}_${engine.getSharelevel}_${engine.getEngineType}"
+  }
+
   private def calculateEngineSpace(engine: Engine): String = {
     val userOrGroup = engine.getSharelevel match {
       case "GROUP" =>
@@ -388,6 +462,7 @@ private[v1] class AdminResource extends ApiRequestContext with Logging {
 
     val engineSpace =
       s"${engine.getNamespace}_${engine.getVersion}_${engine.getSharelevel}_${engine.getEngineType}"
+
     DiscoveryPaths.makePath(engineSpace, userOrGroup, engine.getSubdomain)
   }
 
