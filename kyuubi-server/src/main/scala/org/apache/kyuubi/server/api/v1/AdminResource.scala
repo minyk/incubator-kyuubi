@@ -331,7 +331,7 @@ private[v1] class AdminResource extends ApiRequestContext with Logging {
       node: ServiceNodeInfo): Engine = {
     new Engine(
       version,
-      URLDecoder.decode(user, StandardCharsets.UTF_8),
+      URLDecoder.decode(user, StandardCharsets.UTF_8.name()),
       engineType,
       shareLevel,
       node.namespace.split("/").last,
