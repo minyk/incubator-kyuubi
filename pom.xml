@@ -2232,7 +2232,7 @@
             </modules>
             <properties>
                 <delta.version>2.4.0</delta.version>
-                <spark.version>3.5.0</spark.version>
+                <spark.version>3.5.1</spark.version>
                 <spark.binary.version>3.5</spark.binary.version>
                 <maven.plugin.scalatest.exclude.tags>org.scalatest.tags.Slow,org.apache.kyuubi.tags.DeltaTest,org.apache.kyuubi.tags.PySparkTest</maven.plugin.scalatest.exclude.tags>
             </properties>
