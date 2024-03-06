@@ -576,6 +576,20 @@ object KyuubiConf {
       .timeConf
       .createWithDefaultString("PT5S")
 
+  val FRONTEND_REST_JETTY_HTTP_REQUEST_HEADER_SIZE: ConfigEntry[Int] =
+    buildConf("kyuubi.frontend.rest.jetty.http.request.header.size")
+      .doc("Request header size in bytes.")
+      .version("1.8.1")
+      .intConf
+      .createWithDefault(6144)
+
+  val FRONTEND_REST_JETTY_HTTP_RESPONSE_HEADER_SIZE: ConfigEntry[Int] =
+    buildConf("kyuubi.frontend.rest.jetty.http.response.header.size")
+      .doc("Reponse header size in bytes.")
+      .version("1.8.1")
+      .intConf
+      .createWithDefault(6144)
+
   val FRONTEND_WORKER_KEEPALIVE_TIME: ConfigEntry[Long] =
     buildConf("kyuubi.frontend.worker.keepalive.time")
       .doc("(deprecated) Keep-alive time (in milliseconds) for an idle worker thread")
